@@ -1,0 +1,209 @@
+definitions:
+  api.ErrorResponse:
+    properties:
+      error:
+        example: Invalid currency code format
+        type: string
+    type: object
+  api.LatestResponse:
+    properties:
+      base:
+        example: EUR
+        type: string
+      price:
+        example: "18.7543"
+        type: string
+      quote:
+        example: MXN
+        type: string
+      updated_at:
+        example: "2025-12-01T10:15:30Z"
+        type: string
+    type: object
+  api.QuoteResponse:
+    properties:
+      base:
+        example: EUR
+        type: string
+      error:
+        example: Failed to fetch from provider
+        type: string
+      price:
+        example: "18.7543"
+        type: string
+      quote:
+        example: MXN
+        type: string
+      status:
+        example: SUCCESS
+        type: string
+      update_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      updated_at:
+        example: "2025-12-01T10:15:30Z"
+        type: string
+    type: object
+  api.ReadyResponse:
+    properties:
+      status:
+        example: ready
+        type: string
+    type: object
+  api.UpdateRequest:
+    properties:
+      pair:
+        example: EUR/MXN
+        type: string
+    type: object
+  api.UpdateResponse:
+    properties:
+      update_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /healthz:
+    get:
+      description: Always returns 200 OK if the service is running. Used for liveness
+        probes.
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Health check (liveness)
+      tags:
+      - health
+  /quotes/{update_id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the status and result of a quote update request by its
+        update_id. Returns price and timestamp when status is SUCCESS.
+      parameters:
+      - description: Update ID (UUID)
+        format: uuid
+        in: path
+        name: update_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Quote found
+          schema:
+            $ref: '#/definitions/api.QuoteResponse'
+        "400":
+          description: Invalid update_id format
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Unknown update_id
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get quote update status and result by ID
+      tags:
+      - quotes
+  /quotes/latest:
+    get:
+      consumes:
+      - application/json
+      description: Returns the most recent successful quote for the given currency
+        pair. Does NOT trigger a new fetch - only returns cached/stored data.
+      parameters:
+      - description: Base currency code (3 letters)
+        in: query
+        maxLength: 3
+        minLength: 3
+        name: base
+        required: true
+        type: string
+      - description: Quote currency code (3 letters)
+        in: query
+        maxLength: 3
+        minLength: 3
+        name: quote
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Latest quote found
+          schema:
+            $ref: '#/definitions/api.LatestResponse'
+        "400":
+          description: Invalid currency code format
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: No quote available for the given pair
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get latest quote for a currency pair
+      tags:
+      - quotes
+  /quotes/update:
+    post:
+      consumes:
+      - application/json
+      description: Initiates an asynchronous update for a currency pair. Returns immediately
+        with an update_id for tracking. Does not block on external fetch.
+      parameters:
+      - description: Currency pair in format XXX/YYY
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Update request accepted
+          schema:
+            $ref: '#/definitions/api.UpdateResponse'
+        "400":
+          description: Invalid currency code format
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Request asynchronous quote update
+      tags:
+      - quotes
+  /readyz:
+    get:
+      description: Checks connectivity to critical dependencies (Postgres and Redis).
+        Returns 200 only when all dependencies are reachable.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: All dependencies ready
+          schema:
+            $ref: '#/definitions/api.ReadyResponse'
+        "503":
+          description: At least one dependency unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Readiness check
+      tags:
+      - health
+swagger: "2.0"

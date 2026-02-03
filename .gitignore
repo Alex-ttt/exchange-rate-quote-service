@@ -1,32 +1,132 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
 # Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+quoteservice
+/app
+/bin/app
 
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Output of the go coverage tool
 *.out
 coverage.*
 *.coverprofile
 profile.cov
+coverage.html
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Dependency directories
+vendor/
 
 # Go workspace file
 go.work
 go.work.sum
 
-# env file
-.env
+# Build output
+bin/
+build/
+dist/
+*.o
+*.a
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+# But keep .env.example
+!.env.example
+
+# Generated documentation (Swagger)
+# internal/api/docs/
+# docs/swagger/
+# docs/
+
+# IDE - GoLand / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+# But keep shared run configurations
+!.run/
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+# But keep recommended extensions
+!.vscode/extensions.json
+
+# IDE - Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# IDE - Emacs
+*~
+\#*\#
+.\#*
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Logs
+*.log
+logs/
+log/
+
+# Database files (if any local DBs)
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker volumes (if accidentally created locally)
+.docker/
+
+# Local development certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Go test cache
+go-test-*.json
+
+# Air (live reload tool) temporary files
+tmp/
+
+# Delve debugger
+__debug_bin
+
+# Profiling data
+*.prof
+*.pprof
+
+# Benchmarking data
+*.bench
+
+# Project-specific ignores
+.scratch/
+notes.txt
+TODO.txt
+scratch/
+diagram.asc
+DEVELOPMENT.md

@@ -1,0 +1,27 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run App" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="exchange-rate-quote-service" />
+    <working_directory value="$PROJECT_DIR$" />
+    <kind value="PACKAGE" />
+    <package value="quoteservice/cmd/app" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/cmd/app/main.go" />
+    <output_directory value="$PROJECT_DIR$/bin" />
+    <envs>
+      <env name="QUOTESVC_DATABASE_HOST" value="localhost" />
+      <env name="QUOTESVC_DATABASE_PORT" value="5432" />
+      <env name="QUOTESVC_DATABASE_USER" value="postgres" />
+      <env name="QUOTESVC_DATABASE_PASSWORD" value="postgres" />
+      <env name="QUOTESVC_DATABASE_NAME" value="quotesdb" />
+      <env name="QUOTESVC_DATABASE_SSLMODE" value="disable" />
+      <env name="QUOTESVC_REDIS_ADDR" value="localhost:6380" />
+      <env name="QUOTESVC_REDIS_PASSWORD" value="" />
+      <env name="QUOTESVC_SERVER_PORT" value="8080" />
+      <env name="QUOTESVC_SERVER_SERVE_SWAGGER" value="true" />
+      <env name="QUOTESVC_EXTERNAL_BASE_URL" value="https://api.exchangerate.host" />
+      <env name="QUOTESVC_EXTERNAL_TIMEOUT_SEC" value="5" />
+      <env name="QUOTESVC_WORKER_CONCURRENCY" value="1" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>

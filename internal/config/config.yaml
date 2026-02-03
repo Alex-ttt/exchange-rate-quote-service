@@ -1,0 +1,29 @@
+server:
+  port: 8080
+  serve_swagger: true
+
+database:
+  host: db
+  port: 5432
+  user: postgres
+  password: postgres
+  name: quotesdb
+  sslmode: disable
+
+redis:
+  addr: redis:6380
+  password: ""
+
+external:
+  provider: exchangerate_host
+  base_url: https://api.exchangerate.host
+  api_key: ""
+  timeout_sec: 5
+
+worker:
+  concurrency: 1
+
+cache:
+  ttl_sec: 600
+  task_max_retry: 3
+  task_timeout_sec: 30

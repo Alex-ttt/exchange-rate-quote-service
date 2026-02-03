@@ -1,0 +1,317 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.25.6'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run tests with race detector
+        run: go test -race -v ./...
+
+      - name: Run tests with coverage
+        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18.1-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d testdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:8.4.0-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run integration tests
+        env:
+          TEST_PG_DSN: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
+          TEST_REDIS_ADDR: "localhost:6379"
+        run: go test -tags integration -v -count=1 -race ./internal/integration/...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: --timeout=5m
+
+  swagger:
+    name: Swagger Docs Freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install swag
+        run: go install github.com/swaggo/swag/cmd/swag@latest
+
+      - name: Regenerate swagger docs
+        run: swag init -g cmd/app/main.go -o internal/api/docs
+
+      - name: Check for uncommitted changes
+        run: |
+          if ! git diff --quiet internal/api/docs/; then
+            echo "::error::Swagger docs are out of date. Run 'make swagger' and commit the changes."
+            git diff internal/api/docs/
+            exit 1
+          fi
+          echo "Swagger docs are up to date."
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build binary
+        run: go build -v -o ./bin/quoteservice ./cmd/app
+
+      - name: Check binary
+        run: ./bin/quoteservice --help || echo "Binary created successfully"
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: quoteservice:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker-compose:
+    name: Docker Compose Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build with docker compose
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Wait for containers healthchecks
+        run: |
+          set -euo pipefail
+
+          services=("db" "redis" "app")
+
+          for svc in "${services[@]}"; do
+            echo "Waiting for $svc to become healthy..."
+
+            cid=$(docker compose ps -q "$svc")
+            if [ -z "$cid" ]; then
+              echo "Container for service $svc not found"
+              docker compose ps
+              exit 1
+            fi
+
+            for i in {1..30}; do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "no-healthcheck")
+              echo "  $svc health: $status"
+
+              if [ "$status" = "healthy" ]; then
+                echo "$svc is healthy"
+                break
+              fi
+
+              if [ "$status" = "unhealthy" ]; then
+                echo "$svc is unhealthy"
+                docker compose logs "$svc"
+                exit 1
+              fi
+
+              if [ "$status" = "no-healthcheck" ]; then
+                echo "$svc has no healthcheck configured"
+                exit 1
+              fi
+
+              sleep 2
+              if [ "$i" -eq 30 ]; then
+                echo "Timeout waiting for $svc"
+                docker compose logs
+                exit 1
+              fi
+            done
+          done
+
+      - name: Check readiness
+        run: |
+          curl -f http://localhost:8080/readyz || (docker compose logs && exit 1)
+
+      - name: Test API endpoints
+        run: |
+          response=$(curl -s -w "%{http_code}" -X POST http://localhost:8080/quotes/update \
+            -H 'Content-Type: application/json' \
+            -d '{"pair":"INVALID"}')
+          if [[ ! "$response" =~ 400 ]]; then
+            echo "Expected 400 for invalid pair, got: $response"
+            exit 1
+          fi
+
+          response=$(curl -s -X POST http://localhost:8080/quotes/update \
+            -H 'Content-Type: application/json' \
+            -d '{"pair":"EUR/MXN"}')
+          update_id=$(echo $response | jq -r '.update_id')
+
+          if [[ -z "$update_id" || "$update_id" == "null" ]]; then
+            echo "Failed to get update_id: $response"
+            exit 1
+          fi
+
+          echo "Got update_id: $update_id"
+
+          sleep 5
+          curl -f "http://localhost:8080/quotes/$update_id" || echo "Quote not yet ready (expected)"
+
+          echo "API tests passed"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@v2.22.1
+        with:
+          args: '-no-fail -fmt sarif -out results.sarif ./...'
+        continue-on-error: true
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+        if: always()

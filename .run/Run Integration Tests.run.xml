@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run Integration Tests" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="exchange-rate-quote-service" />
+    <working_directory value="$PROJECT_DIR$" />
+    <go_parameters value="-tags integration" />
+    <go_test_options value="-count=1" />
+    <kind value="PACKAGE" />
+    <package value="quoteservice/internal/integration" />
+    <directory value="$PROJECT_DIR$/internal/integration" />
+    <filePath value="$PROJECT_DIR$/internal/integration" />
+    <framework value="gotest" />
+    <method v="2" />
+  </configuration>
+</component>

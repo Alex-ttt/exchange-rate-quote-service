@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run Tests with Race Detector" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="exchange-rate-quote-service" />
+    <working_directory value="$PROJECT_DIR$" />
+    <go_parameters value="-race" />
+    <kind value="DIRECTORY" />
+    <package value="quoteservice" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$" />
+    <framework value="gotest" />
+    <pattern value="^\QTestHandleRequestUpdate\E$|^\QTestHandleGetQuoteByID\E$|^\QTestHandleGetLatestQuote\E$|^\QTestHandleHealthz\E$|^\QTestHandleReadyz\E$|^\QTestRequestIDMiddleware\E$|^\QTestRequestLoggingMiddleware\E$|^\QTestResponseWriter\E$|^\QTestIsValidCurrencyCode\E$|^\QTestRequestQuoteUpdate_Validation\E$|^\QTestGetLatestQuote_Validation\E$|^\QTestGetQuoteResult_InvalidUUID\E$|^\QTestProcessUpdate_Success\E$|^\QTestProcessUpdate_Failure\E$" />
+    <method v="2" />
+  </configuration>
+</component>
