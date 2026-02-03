@@ -39,10 +39,10 @@ type DatabaseConfig struct {
 	DSN          string
 }
 
-// RedisConfig holds Redis connection settings.
+// RedisConfig holds connection settings for both Redis instances.
 type RedisConfig struct {
-	Addr     string `mapstructure:"addr"`
-	Password string `mapstructure:"password"`
+	AsynqAddr string `mapstructure:"asynq_addr"` // Redis instance for Asynq task queue (required).
+	CacheAddr string `mapstructure:"cache_addr"` // Redis instance for application cache (required).
 }
 
 // ExternalConfig holds settings for the external exchange rate provider.
@@ -95,8 +95,8 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("database.max_open_conns", 10)
 	viper.SetDefault("database.max_idle_conns", 5)
-	viper.SetDefault("redis.addr", "redis:6380")
-	viper.SetDefault("redis.password", "")
+	viper.SetDefault("redis.asynq_addr", "redis_asynq:6380")
+	viper.SetDefault("redis.cache_addr", "redis_cache:6381")
 	viper.SetDefault("external.provider", "exchangerate_host")
 	viper.SetDefault("external.base_url", "https://api.exchangerate.host")
 	viper.SetDefault("external.api_key", "")
@@ -154,8 +154,11 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("database.name is required"))
 	}
 
-	if c.Redis.Addr == "" {
-		errs = append(errs, fmt.Errorf("redis.addr is required"))
+	if c.Redis.AsynqAddr == "" {
+		errs = append(errs, fmt.Errorf("redis.asynq_addr is required (set QUOTESVC_REDIS_ASYNQ_ADDR)"))
+	}
+	if c.Redis.CacheAddr == "" {
+		errs = append(errs, fmt.Errorf("redis.cache_addr is required (set QUOTESVC_REDIS_CACHE_ADDR)"))
 	}
 
 	if c.External.APIKey == "" {

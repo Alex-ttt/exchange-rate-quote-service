@@ -14,8 +14,8 @@
       <env name="QUOTESVC_DATABASE_PASSWORD" value="postgres" />
       <env name="QUOTESVC_DATABASE_NAME" value="quotesdb" />
       <env name="QUOTESVC_DATABASE_SSLMODE" value="disable" />
-      <env name="QUOTESVC_REDIS_ADDR" value="localhost:6380" />
-      <env name="QUOTESVC_REDIS_PASSWORD" value="" />
+      <env name="QUOTESVC_REDIS_ASYNQ_ADDR" value="localhost:6380" />
+      <env name="QUOTESVC_REDIS_CACHE_ADDR" value="localhost:6381" />
       <env name="QUOTESVC_SERVER_PORT" value="8080" />
       <env name="QUOTESVC_SERVER_SERVE_SWAGGER" value="true" />
       <env name="QUOTESVC_EXTERNAL_BASE_URL" value="https://api.exchangerate.host" />

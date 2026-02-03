@@ -7,7 +7,7 @@ This directory contains pre-configured run configurations for GoLand/IntelliJ ID
 ### Application
 
 - **Run App** - Run the application locally with environment variables
-  - Connects to localhost:5432 (Postgres) and localhost:6380 (Redis)
+  - Connects to localhost:5432 (Postgres), localhost:6380 (Redis Asynq) and localhost:6381 (Redis Cache)
   - Port: 8080
   - Swagger UI: http://localhost:8080/swagger/index.html
 
@@ -18,8 +18,8 @@ This directory contains pre-configured run configurations for GoLand/IntelliJ ID
 
 ### Docker
 
-- **Docker Compose Up** - Start all services (app + db + redis)
-- **Docker Dependencies Only** - Start only db + redis (for local development)
+- **Docker Compose Up** - Start all services (app + db + redis_asynq + redis_cache)
+- **Docker Dependencies Only** - Start only db + redis_asynq + redis_cache (for local development)
 
 ### Build & Tools
 
@@ -53,7 +53,7 @@ This directory contains pre-configured run configurations for GoLand/IntelliJ ID
 ### Option B: Local App + Docker Dependencies (Recommended for development)
 
 ```
-1. Run: "Docker Dependencies Only"  (starts postgres + redis)
+1. Run: "Docker Dependencies Only"  (starts postgres + redis_asynq + redis_cache)
 2. Run: "Run App"                   (starts the Go application)
 3. Access app at http://localhost:8080
 ```
@@ -78,8 +78,8 @@ QUOTESVC_DATABASE_USER=postgres
 QUOTESVC_DATABASE_PASSWORD=postgres
 QUOTESVC_DATABASE_NAME=quotesdb
 QUOTESVC_DATABASE_SSLMODE=disable
-QUOTESVC_REDIS_ADDR=localhost:6380
-QUOTESVC_REDIS_PASSWORD=
+QUOTESVC_REDIS_ASYNQ_ADDR=localhost:6380
+QUOTESVC_REDIS_CACHE_ADDR=localhost:6381
 QUOTESVC_SERVER_PORT=8080
 QUOTESVC_SERVER_SERVE_SWAGGER=true
 QUOTESVC_EXTERNAL_BASE_URL=https://api.exchangerate.host
@@ -105,7 +105,7 @@ To debug the application:
 
 ### "Database connection failed"
 - Ensure "Docker Dependencies Only" is running
-- Check that ports 5432 and 6380 are not in use by other processes
+- Check that ports 5432, 6380 and 6381 are not in use by other processes
 - Verify Docker is running
 
 ### "Port already in use"

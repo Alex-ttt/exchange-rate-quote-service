@@ -222,7 +222,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          services=("db" "redis" "app")
+          services=("db" "redis_asynq" "redis_cache" "app")
 
           for svc in "${services[@]}"; do
             echo "Waiting for $svc to become healthy..."

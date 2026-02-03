@@ -26,7 +26,7 @@ type App struct {
 	cfg         *config.Config
 	logger      *zap.SugaredLogger
 	db          *sql.DB
-	rdb         *redis.Client
+	rdbCache    *redis.Client
 	asynqClient *asynq.Client
 	asynqServer *asynq.Server
 	asynqMux    *asynq.ServeMux
@@ -56,9 +56,9 @@ func NewApp(cfg *config.Config, logger *zap.SugaredLogger) (*App, error) {
 // close releases database and Redis connections
 func (app *App) close() error {
 	var errs []error
-	if app.rdb != nil {
-		if err := app.rdb.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("redis close: %w", err))
+	if app.rdbCache != nil {
+		if err := app.rdbCache.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("redis cache close: %w", err))
 		}
 	}
 	if app.db != nil {
@@ -80,19 +80,19 @@ func (app *App) initStorage() error {
 		return fmt.Errorf("run DB migrations: %w", err)
 	}
 
-	app.rdb = redis.NewClient(&redis.Options{
-		Addr:     app.cfg.Redis.Addr,
-		Password: app.cfg.Redis.Password,
+	app.rdbCache = redis.NewClient(&redis.Options{
+		Addr: app.cfg.Redis.CacheAddr,
 	})
-	if err := app.rdb.Ping(context.Background()).Err(); err != nil {
-		return fmt.Errorf("connect to Redis: %w", err)
+	if err := app.rdbCache.Ping(context.Background()).Err(); err != nil {
+		return fmt.Errorf("connect to Redis (cache, %s): %w", app.cfg.Redis.CacheAddr, err)
 	}
+	app.logger.Infow("Connected to Redis cache", "addr", app.cfg.Redis.CacheAddr)
 
 	return nil
 }
 
 func (app *App) initServices() error {
-	redisOpt := asynq.RedisClientOpt{Addr: app.cfg.Redis.Addr, Password: app.cfg.Redis.Password}
+	redisOpt := asynq.RedisClientOpt{Addr: app.cfg.Redis.AsynqAddr}
 	app.asynqClient = asynq.NewClient(redisOpt)
 	app.asynqServer = asynq.NewServer(
 		redisOpt,
@@ -100,6 +100,7 @@ func (app *App) initServices() error {
 			Concurrency: app.cfg.Worker.Concurrency,
 		},
 	)
+	app.logger.Infow("Asynq configured", "addr", app.cfg.Redis.AsynqAddr)
 
 	rateProvider, err := newRateProvider(app.cfg.External)
 	if err != nil {
@@ -107,7 +108,14 @@ func (app *App) initServices() error {
 	}
 	quoteRepo := repository.NewPostgresQuoteRepository(app.db)
 	currencyValidator := service.NewValidator()
-	quoteService := service.NewQuoteService(quoteRepo, rateProvider, currencyValidator, app.asynqClient, app.rdb, app.logger, app.cfg.Cache)
+	quoteService := service.NewQuoteService(
+		quoteRepo,
+		rateProvider,
+		currencyValidator,
+		app.asynqClient,
+		app.rdbCache,
+		app.logger,
+		app.cfg.Cache)
 
 	app.asynqMux = asynq.NewServeMux()
 	app.asynqMux.HandleFunc(service.TaskTypeUpdateQuote, worker.NewQuoteUpdateHandler(quoteService, app.logger))

@@ -6,7 +6,8 @@
           <list>
             <option value="app" />
             <option value="db" />
-            <option value="redis" />
+            <option value="redis_asynq" />
+            <option value="redis_cache" />
           </list>
         </option>
         <option name="sourceFilePath" value="docker-compose.yml" />

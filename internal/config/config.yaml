@@ -11,8 +11,8 @@ database:
   sslmode: disable
 
 redis:
-  addr: redis:6380
-  password: ""
+  asynq_addr: "redis_asynq:6380"
+  cache_addr: "redis_cache:6381"
 
 external:
   provider: exchangerate_host

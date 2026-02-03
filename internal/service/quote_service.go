@@ -38,7 +38,14 @@ type QuoteService struct {
 }
 
 // NewQuoteService creates a new QuoteService
-func NewQuoteService(repo repository.QuoteRepository, prov provider.RatesProvider, validator Validator, taskClient *asynq.Client, cache *redis.Client, logger *zap.SugaredLogger, cacheCfg config.CacheConfig) *QuoteService {
+func NewQuoteService(
+	repo repository.QuoteRepository,
+	prov provider.RatesProvider,
+	validator Validator,
+	taskClient *asynq.Client,
+	cache *redis.Client,
+	logger *zap.SugaredLogger,
+	cacheCfg config.CacheConfig) *QuoteService {
 	return &QuoteService{
 		repo:         repo,
 		provider:     prov,

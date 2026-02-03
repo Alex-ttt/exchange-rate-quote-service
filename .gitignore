@@ -40,10 +40,8 @@ dist/
 # But keep .env.example
 !.env.example
 
-# Generated documentation (Swagger)
-# internal/api/docs/
-# docs/swagger/
-# docs/
+# Documentation (local-only)
+docs/
 
 # IDE - GoLand / IntelliJ IDEA
 .idea/
@@ -66,7 +64,6 @@ dist/
 .*.sw?
 
 # IDE - Emacs
-*~
 \#*\#
 .\#*
 
@@ -110,9 +107,6 @@ log/
 # Go test cache
 go-test-*.json
 
-# Air (live reload tool) temporary files
-tmp/
-
 # Delve debugger
 __debug_bin
 
@@ -130,3 +124,4 @@ TODO.txt
 scratch/
 diagram.asc
 DEVELOPMENT.md
+SPEC.md
