@@ -203,7 +203,6 @@ jobs:
   docker-compose:
     name: Docker Compose Test
     runs-on: ubuntu-latest
-    environment: ci
 
     steps:
       - name: Install jq
