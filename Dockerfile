@@ -10,7 +10,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Install swag (for documentation generation)
-RUN go install github.com/swaggo/swag/cmd/swag@1.16.6
+RUN go install github.com/swaggo/swag/cmd/swag@master
 
 # Copy the rest of the source
 COPY . .
