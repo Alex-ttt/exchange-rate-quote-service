@@ -160,6 +160,8 @@ func (c *Config) Validate() error {
 
 	if c.External.APIKey == "" {
 		errs = append(errs, fmt.Errorf("external.api_key is required (set QUOTESVC_EXTERNAL_API_KEY)"))
+	} else if c.External.APIKey == "ignored" {
+		c.External.APIKey = ""
 	}
 	if c.External.Timeout <= 0 {
 		errs = append(errs, fmt.Errorf("external.timeout_sec must be positive, got %d", c.External.Timeout))

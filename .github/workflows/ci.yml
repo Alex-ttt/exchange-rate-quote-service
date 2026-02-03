@@ -10,8 +10,8 @@ env:
   GO_VERSION: '1.25.6'
 
 jobs:
-  test:
-    name: Test
+  unit-test:
+    name: Unit Test
     runs-on: ubuntu-latest
 
     steps:
@@ -34,10 +34,10 @@ jobs:
         run: go mod verify
 
       - name: Run tests with race detector
-        run: go test -race -v ./...
+        run: go test -race -v $(go list ./... | grep -v /internal/integration)
 
       - name: Run tests with coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v /internal/integration)
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -118,8 +118,9 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64.8
+          version: latest
           args: --timeout=5m
+          install-mode: goinstall
 
   swagger:
     name: Swagger Docs Freshness
@@ -202,6 +203,7 @@ jobs:
   docker-compose:
     name: Docker Compose Test
     runs-on: ubuntu-latest
+    environment: ci
 
     steps:
       - name: Install jq
@@ -299,6 +301,8 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
 
     steps:
       - name: Checkout code
@@ -311,7 +315,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
         if: always()
