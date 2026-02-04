@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/hibiken/asynqmon"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -31,6 +32,7 @@ type App struct {
 	asynqClient *asynq.Client
 	asynqServer *asynq.Server
 	asynqMux    *asynq.ServeMux
+	asynqMon    *asynqmon.HTTPHandler
 	httpServer  *http.Server
 }
 
@@ -60,6 +62,11 @@ func (app *App) close() error {
 	if app.asynqClient != nil {
 		if err := app.asynqClient.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("asynq client close: %w", err))
+		}
+	}
+	if app.asynqMon != nil {
+		if err := app.asynqMon.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("asynqmon close: %w", err))
 		}
 	}
 	if app.rdbAsynq != nil {
@@ -115,6 +122,12 @@ func (app *App) initServices() error {
 			TaskCheckInterval:        time.Duration(app.cfg.Worker.CheckIntervalSec) * time.Second,
 		},
 	)
+	if app.cfg.Server.ServeAsynqmon {
+		app.asynqMon = asynqmon.New(asynqmon.Options{
+			RootPath:     "/asynq",
+			RedisConnOpt: redisOpt,
+		})
+	}
 	app.logger.Infow("Asynq configured", "addr", app.cfg.Redis.AsynqAddr)
 
 	rateProvider, err := newRateProvider(app.cfg, app.rdbCache)

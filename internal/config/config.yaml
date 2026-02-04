@@ -1,6 +1,7 @@
 server:
   port: 8080
   serve_swagger: true
+  serve_asynqmon: true
 
 database:
   host: db

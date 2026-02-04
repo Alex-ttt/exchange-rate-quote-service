@@ -87,7 +87,7 @@ go run ./cmd/app
 
 ### API и Swagger UI
 Приложение предоставляет REST API для работы с котировками.
-- **Swagger UI** доступен по адресу: `http://localhost:8080/swagger/index.html` (если включено в конфиге).
+- **Swagger UI** доступен по адресу: `http://localhost:8080/swagger/index.html` (если включено в конфиге `serve_swagger`).
 - **Основные эндпоинты**:
     - `POST /quotes/update` — создание асинхронной задачи на обновление.
     - `GET /quotes/{update_id}` — получение статуса и результата обновления.
@@ -105,6 +105,11 @@ go run ./cmd/app
   - **Изоляция отказов (Single Responsibility)**: очередь задач и кэш — принципиально разные нагрузки с противоположными требованиями к хранению. Очереди нужна durability и запрет на eviction, кэшу — ограничение памяти и автоматическое вытеснение. Совмещение в одном инстансе заставляет идти на компромисс: либо eviction-политика кэша рискует удалить ключи очереди, либо отключение eviction приводит к OOM при росте кэша.
   - **Независимое масштабирование**: каждый инстанс можно масштабировать и настраивать под свою нагрузку — увеличить `maxmemory` кэша без влияния на очередь, или перенести очередь на более надёжный узел с быстрыми дисками.
   - **Слабая связность (Low Coupling)**: перезапуск, обновление или сбой одного Redis не затрагивает другой. Потеря кэша не останавливает обработку задач, а проблемы с очередью не инвалидируют кэш.
+  - **Дашборд (Asynqmon)**: доступен по адресу `http://localhost:8080/asynq` (если включено в конфиге `serve_asynqmon`). Показывает очереди, задачи и состояние воркеров; удобен для наблюдения и отладки.
+- **Архитектурные решения (ADR)**: Подробное описание и обоснование ключевых технических решений проекта доступны в директории [`docs/adr/`](docs/adr/):
+  - [ADR 0001: Выбор системы очередей (Asynq + Redis)](docs/adr/0001-task-queue-asynq-redis.md)
+  - [ADR 0002: Фоновое обновление котировок (Async Polling)](docs/adr/0002-async-polling-for-quote-updates.md)
+  - [ADR 0003: Выбор БД и констрейнты (PostgreSQL)](docs/adr/0003-database-choice-postgresql.md)
 - **Функции воркера**: получение задач из очереди, выполнение HTTP-запросов к провайдеру, обновление данных в БД и обновление кэша.
 - **Запуск**: воркер запускается в том же процессе, что и API (в текущей конфигурации Docker Compose).
 
@@ -117,6 +122,7 @@ go run ./cmd/app
 | **Server** | | |
 | `QUOTESVC_SERVER_PORT` | Порт HTTP API | `8080` |
 | `QUOTESVC_SERVER_SERVE_SWAGGER` | Включить Swagger UI (`true`/`false`) | `true` |
+| `QUOTESVC_SERVER_SERVE_ASYNQMON` | Включить дашборд Asynqmon (`true`/`false`) | `true` |
 | **Database** | | |
 | `QUOTESVC_DATABASE_HOST` | Хост PostgreSQL | `db` |
 | `QUOTESVC_DATABASE_PORT` | Порт PostgreSQL | `5432` |
@@ -124,12 +130,17 @@ go run ./cmd/app
 | `QUOTESVC_DATABASE_PASSWORD` | Пароль БД | `postgres` |
 | `QUOTESVC_DATABASE_NAME` | Имя базы данных | `quotesdb` |
 | `QUOTESVC_DATABASE_SSLMODE` | Режим SSL для Postgres (`disable`, `require`, etc) | `disable` |
+| `QUOTESVC_DATABASE_MAX_OPEN_CONNS` | Макс. кол-во открытых соединений | `10` |
+| `QUOTESVC_DATABASE_MAX_IDLE_CONNS` | Макс. кол-во свободных соединений | `5` |
+| `QUOTESVC_DATABASE_CONN_MAX_LIFETIME_SEC` | Макс. время жизни соединения (сек) | `300` |
 | **Redis** | | |
 | `QUOTESVC_REDIS_ASYNQ_ADDR` | Адрес Redis для очереди задач | `redis_asynq:6380` |
 | `QUOTESVC_REDIS_CACHE_ADDR` | Адрес Redis для кэша котировок | `redis_cache:6381` |
 | **Providers** | | |
+| `QUOTESVC_EXCHANGERATE_HOST_BASE_URL` | Базовый URL ExchangeRate.host | `https://api.exchangerate.host` |
 | `QUOTESVC_EXCHANGERATE_HOST_API_KEY` | API-ключ для ExchangeRate.host | (пусто) |
 | `QUOTESVC_EXCHANGERATE_HOST_TIMEOUT_SEC` | Таймаут для ExchangeRate.host (сек) | `5` |
+| `QUOTESVC_FRANKFURTER_BASE_URL` | Базовый URL Frankfurter | `https://api.frankfurter.dev/v1` |
 | `QUOTESVC_FRANKFURTER_TIMEOUT_SEC` | Таймаут для Frankfurter (сек) | `5` |
 | **Worker** | | |
 | `QUOTESVC_WORKER_CONCURRENCY` | Количество параллельных воркеров | `1` |
@@ -290,8 +301,11 @@ go test -v -tags=integration ./internal/integration/...
 - **Двухуровневое кэширование**: Система кэширует данные как на уровне приложения (latest price), так и на уровне провайдеров. Это необходимо для обработки сбоев в процессе обработки: если воркер успешно получил цену от провайдера, но произошёл сбой перед сохранением в базу данных (или во время сохранения), при повторном запуске задачи цена будет взята из кэша провайдера, что исключает лишние внешние запросы.
 
 ## Возможные улучшения
+- **Безопасность дашборда Asynq**: в текущей реализации `/asynq` доступен публично. Для использования в продакшене необходимо добавить аутентификацию (например, Basic Auth через middleware), ограничение доступа по IP или вынести дашборд за VPN/Internal Network.
 - **Transactional Outbox**: использование паттерна Outbox для обеспечения гарантии доставки событий между базой данных и асинхронными задачами.
 - **Выделение сервиса поддерживаемых валют**: вынос логики управления списком поддерживаемых валют в отдельный компонент на уровне БД.
 - **Разделение на микросервисы**: разделение API и воркера на два независимых сервиса для их индивидуального масштабирования.
 - **Мониторинг**: добавление Grafana/Prometheus для расширенного мониторинга метрик воркера.
 - **Rate Limiting**: ограничение частоты запросов для конкретных пользователей/IP.
+- **Очистка неактуальных данных**: удаление неактуальных котировок (например, старше 30 дней) с помощью фоновой cron-job.
+

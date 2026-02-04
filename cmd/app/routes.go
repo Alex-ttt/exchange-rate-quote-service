@@ -29,6 +29,9 @@ func (app *App) initHTTP(quoteService service.QuoteServiceInterface) {
 		r.Get("/swagger/*", api.SwaggerUIHandler())
 		r.Get("/openapi.json", api.OpenAPISpecHandler())
 	}
+	if app.cfg.Server.ServeAsynqmon && app.asynqMon != nil {
+		r.Mount("/asynq", app.asynqMon)
+	}
 
 	app.httpServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", app.cfg.Server.Port),

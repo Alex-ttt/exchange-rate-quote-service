@@ -23,8 +23,9 @@ type Config struct {
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Port         int  `mapstructure:"port"`
-	ServeSwagger bool `mapstructure:"serve_swagger"`
+	Port          int  `mapstructure:"port"`
+	ServeSwagger  bool `mapstructure:"serve_swagger"`
+	ServeAsynqmon bool `mapstructure:"serve_asynqmon"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -96,6 +97,7 @@ func LoadConfig() (*Config, error) {
 	// default values
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.serve_swagger", true)
+	viper.SetDefault("server.serve_asynqmon", true)
 	viper.SetDefault("database.host", "db")
 	viper.SetDefault("database.port", 5432)
 	viper.SetDefault("database.user", "postgres")

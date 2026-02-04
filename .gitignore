@@ -41,7 +41,8 @@ dist/
 !.env.example
 
 # Documentation (local-only, top-level only)
-/docs/
+/docs/*
+!/docs/adr/
 
 # IDE - GoLand / IntelliJ IDEA
 .idea/
