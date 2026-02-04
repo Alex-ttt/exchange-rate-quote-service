@@ -12,12 +12,13 @@ import (
 
 // Config holds the complete application configuration.
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	External ExternalConfig
-	Worker   WorkerConfig
-	Cache    CacheConfig
+	Server           ServerConfig
+	Database         DatabaseConfig
+	Redis            RedisConfig
+	ExchangeRateHost ExchangeRateHostConfig `mapstructure:"exchangerate_host"`
+	Frankfurter      FrankfurterConfig      `mapstructure:"frankfurter"`
+	Worker           WorkerConfig
+	Cache            CacheConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -28,15 +29,16 @@ type ServerConfig struct {
 
 // DatabaseConfig holds PostgreSQL connection settings.
 type DatabaseConfig struct {
-	Host         string `mapstructure:"host"`
-	Port         int    `mapstructure:"port"`
-	User         string `mapstructure:"user"`
-	Password     string `mapstructure:"password"`
-	Name         string `mapstructure:"name"`
-	SSLMode      string `mapstructure:"sslmode"`
-	MaxOpenConns int    `mapstructure:"max_open_conns"`
-	MaxIdleConns int    `mapstructure:"max_idle_conns"`
-	DSN          string
+	Host               string `mapstructure:"host"`
+	Port               int    `mapstructure:"port"`
+	User               string `mapstructure:"user"`
+	Password           string `mapstructure:"password"`
+	Name               string `mapstructure:"name"`
+	SSLMode            string `mapstructure:"sslmode"`
+	MaxOpenConns       int    `mapstructure:"max_open_conns"`
+	MaxIdleConns       int    `mapstructure:"max_idle_conns"`
+	ConnMaxLifetimeSec int    `mapstructure:"conn_max_lifetime_sec"`
+	DSN                string
 }
 
 // RedisConfig holds connection settings for both Redis instances.
@@ -45,24 +47,31 @@ type RedisConfig struct {
 	CacheAddr string `mapstructure:"cache_addr"` // Redis instance for application cache (required).
 }
 
-// ExternalConfig holds settings for the external exchange rate provider.
-type ExternalConfig struct {
-	Provider string `mapstructure:"provider"`
-	BaseURL  string `mapstructure:"base_url"`
-	APIKey   string `mapstructure:"api_key"`
-	Timeout  int    `mapstructure:"timeout_sec"`
+// ExchangeRateHostConfig holds settings for the exchangerate.host provider.
+type ExchangeRateHostConfig struct {
+	BaseURL string `mapstructure:"base_url"`
+	APIKey  string `mapstructure:"api_key"`
+	Timeout int    `mapstructure:"timeout_sec"`
 }
 
-// WorkerConfig holds background worker settings.
+// FrankfurterConfig holds settings for the frankfurter provider.
+type FrankfurterConfig struct {
+	BaseURL string `mapstructure:"base_url"`
+	Timeout int    `mapstructure:"timeout_sec"`
+}
+
+// WorkerConfig holds background worker and task queue settings.
 type WorkerConfig struct {
-	Concurrency int `mapstructure:"concurrency"`
+	Concurrency      int `mapstructure:"concurrency"`
+	MaxRetry         int `mapstructure:"max_retry"`
+	TimeoutSec       int `mapstructure:"timeout_sec"`
+	CheckIntervalSec int `mapstructure:"check_interval_sec"`
 }
 
-// CacheConfig holds caching and task retry settings.
+// CacheConfig holds caching settings.
 type CacheConfig struct {
-	TTLSec         int `mapstructure:"ttl_sec"`
-	TaskMaxRetry   int `mapstructure:"task_max_retry"`
-	TaskTimeoutSec int `mapstructure:"task_timeout_sec"`
+	LatestPriceTTLSec           int `mapstructure:"latest_price_ttl_sec"`
+	ExchangeProviderPriceTTLSec int `mapstructure:"exchange_provider_price_ttl_sec"`
 }
 
 // LoadConfig reads configuration from config files, environment variables, and defaults.
@@ -95,16 +104,20 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("database.max_open_conns", 10)
 	viper.SetDefault("database.max_idle_conns", 5)
+	viper.SetDefault("database.conn_max_lifetime_sec", 300)
 	viper.SetDefault("redis.asynq_addr", "redis_asynq:6380")
 	viper.SetDefault("redis.cache_addr", "redis_cache:6381")
-	viper.SetDefault("external.provider", "exchangerate_host")
-	viper.SetDefault("external.base_url", "https://api.exchangerate.host")
-	viper.SetDefault("external.api_key", "")
-	viper.SetDefault("external.timeout_sec", 5)
+	viper.SetDefault("exchangerate_host.base_url", "https://api.exchangerate.host")
+	viper.SetDefault("exchangerate_host.api_key", "")
+	viper.SetDefault("exchangerate_host.timeout_sec", 5)
+	viper.SetDefault("frankfurter.base_url", "https://api.frankfurter.dev/v1")
+	viper.SetDefault("frankfurter.timeout_sec", 5)
 	viper.SetDefault("worker.concurrency", 1)
-	viper.SetDefault("cache.ttl_sec", 3600)
-	viper.SetDefault("cache.task_max_retry", 3)
-	viper.SetDefault("cache.task_timeout_sec", 30)
+	viper.SetDefault("worker.max_retry", 3)
+	viper.SetDefault("worker.timeout_sec", 30)
+	viper.SetDefault("worker.check_interval_sec", 5)
+	viper.SetDefault("cache.latest_price_ttl_sec", 600)
+	viper.SetDefault("cache.exchange_provider_price_ttl_sec", 300)
 
 	if err := viper.ReadInConfig(); err != nil {
 		// It's okay if no config file, we have defaults and env
@@ -124,6 +137,9 @@ func LoadConfig() (*Config, error) {
 	}
 	if cfg.Database.MaxIdleConns <= 0 {
 		cfg.Database.MaxIdleConns = 5
+	}
+	if cfg.Database.ConnMaxLifetimeSec <= 0 {
+		cfg.Database.ConnMaxLifetimeSec = 300
 	}
 
 	cfg.Database.DSN = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
@@ -161,17 +177,24 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("redis.cache_addr is required (set QUOTESVC_REDIS_CACHE_ADDR)"))
 	}
 
-	if c.External.APIKey == "" {
-		errs = append(errs, fmt.Errorf("external.api_key is required (set QUOTESVC_EXTERNAL_API_KEY)"))
-	} else if c.External.APIKey == "ignored" {
-		c.External.APIKey = ""
-	}
-	if c.External.Timeout <= 0 {
-		errs = append(errs, fmt.Errorf("external.timeout_sec must be positive, got %d", c.External.Timeout))
-	}
-
 	if c.Worker.Concurrency <= 0 {
 		errs = append(errs, fmt.Errorf("worker.concurrency must be positive, got %d", c.Worker.Concurrency))
+	}
+	if c.Worker.MaxRetry < 0 {
+		errs = append(errs, fmt.Errorf("worker.max_retry must be non-negative, got %d", c.Worker.MaxRetry))
+	}
+	if c.Worker.TimeoutSec <= 0 {
+		errs = append(errs, fmt.Errorf("worker.timeout_sec must be positive, got %d", c.Worker.TimeoutSec))
+	}
+	if c.Worker.CheckIntervalSec <= 0 {
+		errs = append(errs, fmt.Errorf("worker.check_interval_sec must be positive, got %d", c.Worker.CheckIntervalSec))
+	}
+
+	if c.Cache.LatestPriceTTLSec <= 0 {
+		errs = append(errs, fmt.Errorf("cache.latest_price_ttl_sec must be positive, got %d", c.Cache.LatestPriceTTLSec))
+	}
+	if c.Cache.ExchangeProviderPriceTTLSec <= 0 {
+		errs = append(errs, fmt.Errorf("cache.exchange_provider_price_ttl_sec must be positive, got %d", c.Cache.ExchangeProviderPriceTTLSec))
 	}
 
 	return errors.Join(errs...)

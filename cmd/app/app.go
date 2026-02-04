@@ -27,6 +27,7 @@ type App struct {
 	logger      *zap.SugaredLogger
 	db          *sql.DB
 	rdbCache    *redis.Client
+	rdbAsynq    *redis.Client
 	asynqClient *asynq.Client
 	asynqServer *asynq.Server
 	asynqMux    *asynq.ServeMux
@@ -56,6 +57,16 @@ func NewApp(cfg *config.Config, logger *zap.SugaredLogger) (*App, error) {
 // close releases database and Redis connections
 func (app *App) close() error {
 	var errs []error
+	if app.asynqClient != nil {
+		if err := app.asynqClient.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("asynq client close: %w", err))
+		}
+	}
+	if app.rdbAsynq != nil {
+		if err := app.rdbAsynq.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("redis asynq close: %w", err))
+		}
+	}
 	if app.rdbCache != nil {
 		if err := app.rdbCache.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("redis cache close: %w", err))
@@ -76,7 +87,7 @@ func (app *App) initStorage() error {
 	}
 	app.db = db
 
-	if err := repository.RunMigrations(app.db); err != nil {
+	if err := repository.RunMigrations(app.db, app.logger); err != nil {
 		return fmt.Errorf("run DB migrations: %w", err)
 	}
 
@@ -93,26 +104,35 @@ func (app *App) initStorage() error {
 
 func (app *App) initServices() error {
 	redisOpt := asynq.RedisClientOpt{Addr: app.cfg.Redis.AsynqAddr}
+
+	app.rdbAsynq = redis.NewClient(&redis.Options{Addr: app.cfg.Redis.AsynqAddr})
 	app.asynqClient = asynq.NewClient(redisOpt)
 	app.asynqServer = asynq.NewServer(
 		redisOpt,
 		asynq.Config{
-			Concurrency: app.cfg.Worker.Concurrency,
+			Concurrency:              app.cfg.Worker.Concurrency,
+			DelayedTaskCheckInterval: time.Duration(app.cfg.Worker.CheckIntervalSec) * time.Second,
+			TaskCheckInterval:        time.Duration(app.cfg.Worker.CheckIntervalSec) * time.Second,
 		},
 	)
 	app.logger.Infow("Asynq configured", "addr", app.cfg.Redis.AsynqAddr)
 
-	rateProvider, err := newRateProvider(app.cfg.External)
+	rateProvider, err := newRateProvider(app.cfg, app.rdbCache)
 	if err != nil {
 		return err
 	}
 	quoteRepo := repository.NewPostgresQuoteRepository(app.db)
 	currencyValidator := service.NewValidator()
+	asynqEnqueuer := worker.NewAsynqEnqueuer(
+		app.asynqClient,
+		app.cfg.Worker.MaxRetry,
+		time.Duration(app.cfg.Worker.TimeoutSec)*time.Second,
+	)
 	quoteService := service.NewQuoteService(
 		quoteRepo,
 		rateProvider,
 		currencyValidator,
-		app.asynqClient,
+		asynqEnqueuer,
 		app.rdbCache,
 		app.logger,
 		app.cfg.Cache)
@@ -124,13 +144,31 @@ func (app *App) initServices() error {
 	return nil
 }
 
-func newRateProvider(cfg config.ExternalConfig) (provider.RatesProvider, error) {
-	switch cfg.Provider {
-	case "exchangerate_host":
-		return provider.NewExchangeRateHostProvider(cfg.BaseURL, cfg.APIKey, cfg.Timeout), nil
-	default:
-		return nil, fmt.Errorf("unknown rate provider: %s", cfg.Provider)
+func newRateProvider(cfg *config.Config, cache *redis.Client) (provider.RatesProvider, error) {
+	ttl := time.Duration(cfg.Cache.ExchangeProviderPriceTTLSec) * time.Second
+
+	var providers []provider.RatesProvider
+
+	if cfg.ExchangeRateHost.BaseURL != "" && cfg.ExchangeRateHost.APIKey != "" {
+		p := provider.NewExchangeRateHostProvider(cfg.ExchangeRateHost.BaseURL, cfg.ExchangeRateHost.APIKey, cfg.ExchangeRateHost.Timeout)
+		providers = append(providers, provider.NewCachedRatesProvider(p, cache, ttl, "exchangerate_host"))
 	}
+
+	if cfg.Frankfurter.BaseURL != "" {
+		p := provider.NewFrankfurterProvider(cfg.Frankfurter.BaseURL, cfg.Frankfurter.Timeout)
+		providers = append(providers, provider.NewCachedRatesProvider(p, cache, ttl, "frankfurter"))
+	}
+
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("no exchange rate providers are correctly configured: " +
+			"frankfurter requires base_url, exchangerate_host requires base_url and api_key")
+	}
+
+	if len(providers) == 1 {
+		return providers[0], nil
+	}
+
+	return provider.NewExchangeProviderFacade(providers...), nil
 }
 
 // Run starts the HTTP server and Asynq worker, blocking until the context is canceled.
@@ -183,13 +221,7 @@ func (app *App) shutdown() error {
 	// 2. Drain in-flight Asynq tasks
 	app.asynqServer.Shutdown()
 
-	// 3. Close Asynq client
-	if err := app.asynqClient.Close(); err != nil {
-		app.logger.Errorw("Asynq client close error", "error", err)
-		errs = append(errs, fmt.Errorf("asynq client close: %w", err))
-	}
-
-	// 4. Close Redis and database (after worker is done using them)
+	// 3. Close connections (asynq client, Redis, database)
 	if err := app.close(); err != nil {
 		app.logger.Errorw("Connection cleanup errors", "error", err)
 		errs = append(errs, err)

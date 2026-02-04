@@ -23,7 +23,7 @@ RUN go build -o /app/quoteservice ./cmd/app
 
 
 # Runtime stage
-FROM alpine:3.18
+FROM alpine:3.23.3
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

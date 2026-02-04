@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ type fakeProvider struct {
 	rate string
 }
 
-func (f *fakeProvider) GetRate(base, quote string) (string, time.Time, error) {
+func (f *fakeProvider) GetRate(_ context.Context, base, quote string) (string, time.Time, error) {
 	return f.rate, time.Now().UTC(), nil
 }
 
@@ -35,9 +36,8 @@ func TestProcessUpdate_FullLifecycle(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	prov := &fakeProvider{rate: "1.0850"}
 	cacheCfg := config.CacheConfig{
-		TTLSec:         3600,
-		TaskMaxRetry:   3,
-		TaskTimeoutSec: 30,
+		LatestPriceTTLSec:           3600,
+		ExchangeProviderPriceTTLSec: 3600,
 	}
 	v := service.NewValidator()
 	svc := service.NewQuoteService(repo, prov, v, nil, testRDB, logger, cacheCfg)

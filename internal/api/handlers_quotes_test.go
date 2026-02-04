@@ -87,6 +87,28 @@ func TestHandleRequestUpdate(t *testing.T) {
 	})
 }
 
+func execGetQuoteByID(t *testing.T, svc service.QuoteServiceInterface, updateID string) QuoteResponse {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/quotes/"+updateID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("update_id", updateID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	handler := HandleGetQuoteByID(svc)
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var resp QuoteResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	return resp
+}
+
 func TestHandleGetQuoteByID(t *testing.T) {
 	t.Run("success status returns full quote", func(t *testing.T) {
 		price := "18.7543"
@@ -104,23 +126,7 @@ func TestHandleGetQuoteByID(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/quotes/test-uuid", nil)
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("update_id", "test-uuid")
-		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-		w := httptest.NewRecorder()
-
-		handler := HandleGetQuoteByID(svc)
-		handler.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-
-		var resp QuoteResponse
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
+		resp := execGetQuoteByID(t, svc, "test-uuid")
 
 		if resp.Status != "SUCCESS" {
 			t.Errorf("Expected status SUCCESS, got %s", resp.Status)
@@ -145,23 +151,7 @@ func TestHandleGetQuoteByID(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/quotes/test-uuid", nil)
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("update_id", "test-uuid")
-		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-		w := httptest.NewRecorder()
-
-		handler := HandleGetQuoteByID(svc)
-		handler.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-
-		var resp QuoteResponse
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
+		resp := execGetQuoteByID(t, svc, "test-uuid")
 
 		if resp.Status != "PENDING" {
 			t.Errorf("Expected status PENDING, got %s", resp.Status)
@@ -302,20 +292,4 @@ func TestHandleGetLatestQuote(t *testing.T) {
 			t.Errorf("Expected specific error message, got '%s'", resp.Error)
 		}
 	})
-}
-
-func TestHandleHealthz(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	w := httptest.NewRecorder()
-
-	handler := HandleHealthz()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	if w.Body.String() != "OK" {
-		t.Errorf("Expected body 'OK', got '%s'", w.Body.String())
-	}
 }

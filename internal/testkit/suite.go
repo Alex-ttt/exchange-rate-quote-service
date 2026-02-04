@@ -120,13 +120,13 @@ func (s *Suite) Run(m *testing.M, afterSetup ...func() error) {
 	ctx := context.Background()
 
 	if err := s.Setup(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "integration test setup failed: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "integration test setup failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	for _, fn := range afterSetup {
 		if err := fn(); err != nil {
-			fmt.Fprintf(os.Stderr, "afterSetup callback failed: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "afterSetup callback failed: %v\n", err)
 			s.Shutdown(ctx)
 			os.Exit(1)
 		}

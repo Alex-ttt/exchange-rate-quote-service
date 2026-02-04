@@ -25,6 +25,6 @@ func (m *mockQuoteService) GetLatestQuote(ctx context.Context, base, quote strin
 	return m.getLatestQuoteFunc(ctx, base, quote)
 }
 
-func (m *mockQuoteService) ProcessUpdate(ctx context.Context, updateID, base, quote string) error {
+func (m *mockQuoteService) ProcessUpdate(_ context.Context, _, _, _ string) error {
 	return nil // Not used in handler tests
 }

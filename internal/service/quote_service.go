@@ -3,11 +3,9 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -24,17 +22,20 @@ type QuoteServiceInterface interface {
 	ProcessUpdate(ctx context.Context, updateID, base, quote string) error
 }
 
+// TaskEnqueuer abstracts background task enqueueing
+type TaskEnqueuer interface {
+	EnqueueUpdateTask(ctx context.Context, payload UpdateQuotePayload) error
+}
+
 // QuoteService defines business logic for quotes
 type QuoteService struct {
-	repo         repository.QuoteRepository
-	provider     provider.RatesProvider
-	validator    Validator
-	taskClient   *asynq.Client
-	cache        *redis.Client
-	log          *zap.SugaredLogger
-	cacheTTL     time.Duration
-	taskMaxRetry int
-	taskTimeout  time.Duration
+	repo           repository.QuoteRepository
+	provider       provider.RatesProvider
+	validator      Validator
+	taskEnqueuer   TaskEnqueuer
+	cache          *redis.Client
+	log            *zap.SugaredLogger
+	latestPriceTTL time.Duration
 }
 
 // NewQuoteService creates a new QuoteService
@@ -42,20 +43,18 @@ func NewQuoteService(
 	repo repository.QuoteRepository,
 	prov provider.RatesProvider,
 	validator Validator,
-	taskClient *asynq.Client,
+	taskClient TaskEnqueuer,
 	cache *redis.Client,
 	logger *zap.SugaredLogger,
 	cacheCfg config.CacheConfig) *QuoteService {
 	return &QuoteService{
-		repo:         repo,
-		provider:     prov,
-		validator:    validator,
-		taskClient:   taskClient,
-		cache:        cache,
-		log:          logger,
-		cacheTTL:     time.Duration(cacheCfg.TTLSec) * time.Second,
-		taskMaxRetry: cacheCfg.TaskMaxRetry,
-		taskTimeout:  time.Duration(cacheCfg.TaskTimeoutSec) * time.Second,
+		repo:           repo,
+		provider:       prov,
+		validator:      validator,
+		taskEnqueuer:   taskClient,
+		cache:          cache,
+		log:            logger,
+		latestPriceTTL: time.Duration(cacheCfg.LatestPriceTTLSec) * time.Second,
 	}
 }
 
@@ -149,13 +148,13 @@ func (s *QuoteService) ProcessUpdate(ctx context.Context, updateID, base, quote 
 	s.log.Infow("Processing update", "update_id", updateID, "base", base, "quote", quote)
 	s.markRunning(ctx, updateID)
 
-	rate, fetchedAt, err := s.provider.GetRate(base, quote)
+	rate, fetchedAt, err := s.provider.GetRate(ctx, base, quote)
 	if err != nil {
 		s.completeFailure(ctx, updateID, err)
 		return err
 	}
 
-	if err := s.repo.MarkCompleted(ctx, updateID, rate, repository.StatusSuccess, nil); err != nil {
+	if err := s.repo.MarkSuccess(ctx, updateID, rate); err != nil {
 		s.log.Errorw("DB update error on success", "update_id", updateID, "error", err)
 		return err
 	}
@@ -166,14 +165,13 @@ func (s *QuoteService) ProcessUpdate(ctx context.Context, updateID, base, quote 
 }
 
 func (s *QuoteService) enqueueUpdateTask(ctx context.Context, updateID, base, quote string) error {
-	task, err := s.createUpdateQuoteTask(updateID, base, quote)
-	if err != nil {
-		s.log.Errorw("Failed to create task payload", "error", err)
-		s.markFailed(ctx, updateID, "task creation error")
-		return ErrInternal
+	payload := UpdateQuotePayload{
+		UpdateID: updateID,
+		Base:     base,
+		Quote:    quote,
 	}
 
-	if _, err := s.taskClient.Enqueue(task); err != nil {
+	if err := s.taskEnqueuer.EnqueueUpdateTask(ctx, payload); err != nil {
 		s.log.Errorw("Failed to enqueue task", "update_id", updateID, "error", err)
 		s.markFailed(ctx, updateID, "enqueue error")
 		return ErrInternalQueue
@@ -182,7 +180,7 @@ func (s *QuoteService) enqueueUpdateTask(ctx context.Context, updateID, base, qu
 }
 
 func (s *QuoteService) markFailed(ctx context.Context, updateID, reason string) {
-	if err := s.repo.MarkCompleted(ctx, updateID, "", repository.StatusFailed, strPtr(reason)); err != nil {
+	if err := s.repo.MarkFailed(ctx, updateID, reason); err != nil {
 		s.log.Warnw("Failed to mark record as FAILED", "update_id", updateID, "error", err)
 	}
 }
@@ -195,8 +193,7 @@ func (s *QuoteService) markRunning(ctx context.Context, updateID string) {
 
 func (s *QuoteService) completeFailure(ctx context.Context, updateID string, cause error) {
 	s.log.Errorw("Provider error", "update_id", updateID, "error", cause)
-	msg := cause.Error()
-	if err := s.repo.MarkCompleted(ctx, updateID, "", repository.StatusFailed, &msg); err != nil {
+	if err := s.repo.MarkFailed(ctx, updateID, cause.Error()); err != nil {
 		s.log.Warnw("Failed to mark record as FAILED after provider error", "update_id", updateID, "error", err)
 	}
 }
@@ -211,27 +208,9 @@ type UpdateQuotePayload struct {
 	Quote    string `json:"quote"`
 }
 
-// createUpdateQuoteTask creates an Asynq Task for updating a quote.
-func (s *QuoteService) createUpdateQuoteTask(updateID, base, quote string) (*asynq.Task, error) {
-	payload, err := json.Marshal(UpdateQuotePayload{
-		UpdateID: updateID,
-		Base:     base,
-		Quote:    quote,
-	})
-	if err != nil {
-		return nil, err
-	}
-	task := asynq.NewTask(TaskTypeUpdateQuote, payload,
-		asynq.MaxRetry(s.taskMaxRetry),
-		asynq.Timeout(s.taskTimeout),
-	)
-	return task, nil
-}
-
 func (s *QuoteService) validatePair(base, quote string) error {
 	if err := s.validator.Validate(base); err != nil {
 		return err
 	}
-	err := s.validator.Validate(quote)
-	return err
+	return s.validator.Validate(quote)
 }

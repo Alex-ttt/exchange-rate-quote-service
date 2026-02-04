@@ -1,14 +1,12 @@
 package api
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/redis/go-redis/v9"
 
 	"quoteservice/internal/service"
 )
@@ -42,11 +40,6 @@ type LatestResponse struct {
 	UpdatedAt string `json:"updated_at" example:"2025-12-01T10:15:30Z"`
 }
 
-// ReadyResponse represents the readiness response
-type ReadyResponse struct {
-	Status string `json:"status" example:"ready"`
-}
-
 // HandleRequestUpdate godoc
 // @Summary Request asynchronous quote update
 // @Description Initiates an asynchronous update for a currency pair. Returns immediately with an update_id for tracking. Does not block on external fetch.
@@ -65,7 +58,7 @@ func HandleRequestUpdate(svc service.QuoteServiceInterface) http.HandlerFunc {
 		}
 		dec := json.NewDecoder(r.Body)
 		if err := dec.Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
 			return
 		}
 		pair := strings.TrimSpace(req.Pair)
@@ -76,7 +69,8 @@ func HandleRequestUpdate(svc service.QuoteServiceInterface) http.HandlerFunc {
 		updateID, _, err := svc.RequestQuoteUpdate(r.Context(), pair)
 		if err != nil {
 			switch {
-			case errors.Is(err, service.ErrInvalidPairFormat):
+			case errors.Is(err, service.ErrInvalidPairFormat),
+				errors.Is(err, service.ErrUnsupportedCurrency):
 				writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 			default:
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Internal error"})
@@ -176,45 +170,5 @@ func HandleGetLatestQuote(svc service.QuoteServiceInterface) http.HandlerFunc {
 			Price:     derefStr(latest.Price),
 			UpdatedAt: derefStr(latest.UpdatedAt),
 		})
-	}
-}
-
-// HandleHealthz godoc
-// @Summary Health check (liveness)
-// @Description Always returns 200 OK if the service is running. Used for liveness probes.
-// @Tags health
-// @Produce plain
-// @Success 200 {string} string "OK"
-// @Router /healthz [get]
-func HandleHealthz() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("OK"))
-	}
-}
-
-// HandleReadyz godoc
-// @Summary Readiness check
-// @Description Checks connectivity to critical dependencies (Postgres and Redis). Returns 200 only when all dependencies are reachable.
-// @Tags health
-// @Produce json
-// @Success 200 {object} ReadyResponse "All dependencies ready"
-// @Failure 503 {object} ErrorResponse "At least one dependency unavailable"
-// @Router /readyz [get]
-func HandleReadyz(db *sql.DB, cache *redis.Client) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := db.PingContext(r.Context()); err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "DB not ready"})
-			return
-		}
-
-		if cache != nil {
-			if err := cache.Ping(r.Context()).Err(); err != nil {
-				writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "Cache not ready"})
-				return
-			}
-		}
-
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}
 }

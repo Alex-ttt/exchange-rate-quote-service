@@ -61,14 +61,14 @@ func (s *QuoteService) cacheSetLatest(ctx context.Context, base, quote, rate str
 	key := latestCacheKey(base, quote)
 	pipe := s.cache.Pipeline()
 	pipe.HSet(ctx, key, "price", rate, "updated_at", t.Format(time.RFC3339))
-	pipe.Expire(ctx, key, s.cacheTTL)
+	pipe.Expire(ctx, key, s.latestPriceTTL)
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		s.log.Warnw("Failed to update cache", "key", key, "error", err)
 	}
 }
 
-func asString(v interface{}) (string, bool) {
+func asString(v any) (string, bool) {
 	switch x := v.(type) {
 	case string:
 		return x, true

@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-func strPtr(s string) *string {
-	return &s
-}
-
 func normalizePair(base, quote string) (normBase, normQuote string, err error) {
 	if !IsValidCurrencyCode(base) || !IsValidCurrencyCode(quote) {
 		return "", "", ErrInvalidPairFormat

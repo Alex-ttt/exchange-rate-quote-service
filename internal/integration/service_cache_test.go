@@ -20,9 +20,8 @@ func newCacheTestService() *service.QuoteService {
 	repo := repository.NewPostgresQuoteRepository(testDB)
 	logger := zap.NewNop().Sugar()
 	cacheCfg := config.CacheConfig{
-		TTLSec:         3600,
-		TaskMaxRetry:   3,
-		TaskTimeoutSec: 30,
+		LatestPriceTTLSec:           3600,
+		ExchangeProviderPriceTTLSec: 3600,
 	}
 	v := service.NewValidator()
 	return service.NewQuoteService(repo, nil, v, nil, testRDB, logger, cacheCfg)
@@ -42,8 +41,8 @@ func insertSuccessRecord(t *testing.T, base, quote, price string) string {
 	if err := repo.MarkRunning(ctx, id); err != nil {
 		t.Fatalf("MarkRunning: %v", err)
 	}
-	if err := repo.MarkCompleted(ctx, id, price, repository.StatusSuccess, nil); err != nil {
-		t.Fatalf("MarkCompleted: %v", err)
+	if err := repo.MarkSuccess(ctx, id, price); err != nil {
+		t.Fatalf("MarkSuccess: %v", err)
 	}
 	return id
 }

@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -80,15 +81,13 @@ func TestCreateUpdate_AfterCompletion(t *testing.T) {
 		t.Fatalf("CreateUpdate: %v", err)
 	}
 
-	// Move to RUNNING then SUCCESS.
 	if err := repo.MarkRunning(ctx, id1); err != nil {
 		t.Fatalf("MarkRunning: %v", err)
 	}
-	if err := repo.MarkCompleted(ctx, id1, "1.1234", repository.StatusSuccess, nil); err != nil {
-		t.Fatalf("MarkCompleted: %v", err)
+	if err := repo.MarkSuccess(ctx, id1, "1.1234"); err != nil {
+		t.Fatalf("MarkSuccess: %v", err)
 	}
 
-	// New request for same pair should create a new record.
 	id2 := uuid.New().String()
 	got, err := repo.CreateUpdate(ctx, "USD", "EUR", id2)
 	if err != nil {
@@ -117,6 +116,9 @@ func TestMarkRunning(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID: %v", err)
 		}
+		if q == nil {
+			t.Fatal("expected record, got nil")
+		}
 		if q.Status != repository.StatusRunning {
 			t.Fatalf("expected RUNNING, got %s", q.Status)
 		}
@@ -129,26 +131,35 @@ func TestMarkRunning(t *testing.T) {
 	})
 }
 
-func TestMarkCompleted_Success(t *testing.T) {
+func setupRunningUpdate(t *testing.T, base, quote string) (context.Context, repository.QuoteRepository, string) {
+	t.Helper()
 	resetTestData(t)
 	ctx := testContext(t)
 	repo := newRepo()
 
 	id := uuid.New().String()
-	if _, err := repo.CreateUpdate(ctx, "USD", "GBP", id); err != nil {
+	if _, err := repo.CreateUpdate(ctx, base, quote, id); err != nil {
 		t.Fatalf("CreateUpdate: %v", err)
 	}
 	if err := repo.MarkRunning(ctx, id); err != nil {
 		t.Fatalf("MarkRunning: %v", err)
 	}
+	return ctx, repo, id
+}
 
-	if err := repo.MarkCompleted(ctx, id, "0.7890", repository.StatusSuccess, nil); err != nil {
-		t.Fatalf("MarkCompleted SUCCESS: %v", err)
+func TestMarkSuccess(t *testing.T) {
+	ctx, repo, id := setupRunningUpdate(t, "USD", "GBP")
+
+	if err := repo.MarkSuccess(ctx, id, "0.7890"); err != nil {
+		t.Fatalf("MarkSuccess: %v", err)
 	}
 
 	q, err := repo.GetByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
+	}
+	if q == nil {
+		t.Fatal("expected record, got nil")
 	}
 	if q.Status != repository.StatusSuccess {
 		t.Fatalf("expected SUCCESS, got %s", q.Status)
@@ -165,7 +176,33 @@ func TestMarkCompleted_Success(t *testing.T) {
 	}
 }
 
-func TestMarkCompleted_Failed(t *testing.T) {
+func TestMarkFailed_FromRunning(t *testing.T) {
+	ctx, repo, id := setupRunningUpdate(t, "USD", "GBP")
+
+	errMsg := "provider timeout"
+	if err := repo.MarkFailed(ctx, id, errMsg); err != nil {
+		t.Fatalf("MarkFailed: %v", err)
+	}
+
+	q, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if q == nil {
+		t.Fatal("expected record, got nil")
+	}
+	if q.Status != repository.StatusFailed {
+		t.Fatalf("expected FAILED, got %s", q.Status)
+	}
+	if q.Price != nil {
+		t.Fatalf("expected nil price for FAILED status, got %s", *q.Price)
+	}
+	if q.ErrorMsg == nil || *q.ErrorMsg != errMsg {
+		t.Fatalf("expected error message %q, got %v", errMsg, q.ErrorMsg)
+	}
+}
+
+func TestMarkFailed_FromPending(t *testing.T) {
 	resetTestData(t)
 	ctx := testContext(t)
 	repo := newRepo()
@@ -174,18 +211,18 @@ func TestMarkCompleted_Failed(t *testing.T) {
 	if _, err := repo.CreateUpdate(ctx, "USD", "GBP", id); err != nil {
 		t.Fatalf("CreateUpdate: %v", err)
 	}
-	if err := repo.MarkRunning(ctx, id); err != nil {
-		t.Fatalf("MarkRunning: %v", err)
-	}
 
-	errMsg := "provider timeout"
-	if err := repo.MarkCompleted(ctx, id, "", repository.StatusFailed, &errMsg); err != nil {
-		t.Fatalf("MarkCompleted FAILED: %v", err)
+	errMsg := "enqueue error"
+	if err := repo.MarkFailed(ctx, id, errMsg); err != nil {
+		t.Fatalf("MarkFailed from PENDING: %v", err)
 	}
 
 	q, err := repo.GetByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
+	}
+	if q == nil {
+		t.Fatal("expected record, got nil")
 	}
 	if q.Status != repository.StatusFailed {
 		t.Fatalf("expected FAILED, got %s", q.Status)
@@ -195,7 +232,7 @@ func TestMarkCompleted_Failed(t *testing.T) {
 	}
 }
 
-func TestMarkCompleted_WrongStatus(t *testing.T) {
+func TestMarkSuccess_WrongStatus(t *testing.T) {
 	resetTestData(t)
 	ctx := testContext(t)
 	repo := newRepo()
@@ -205,10 +242,22 @@ func TestMarkCompleted_WrongStatus(t *testing.T) {
 		t.Fatalf("CreateUpdate: %v", err)
 	}
 
-	// Try to mark completed while still PENDING (not RUNNING).
-	err := repo.MarkCompleted(ctx, id, "1.0000", repository.StatusSuccess, nil)
-	if err == nil {
-		t.Fatal("expected error for MarkCompleted on non-RUNNING record, got nil")
+	// Try to mark success while still PENDING (not RUNNING).
+	if err := repo.MarkSuccess(ctx, id, "1.0000"); err == nil {
+		t.Fatal("expected error for MarkSuccess on non-RUNNING record, got nil")
+	}
+}
+
+func TestMarkFailed_WrongStatus(t *testing.T) {
+	ctx, repo, id := setupRunningUpdate(t, "USD", "GBP")
+
+	if err := repo.MarkSuccess(ctx, id, "1.0000"); err != nil {
+		t.Fatalf("MarkSuccess: %v", err)
+	}
+
+	// Try to mark failed on an already completed (SUCCESS) record.
+	if err := repo.MarkFailed(ctx, id, "some error"); err == nil {
+		t.Fatal("expected error for MarkFailed on SUCCESS record, got nil")
 	}
 }
 
@@ -270,8 +319,8 @@ func TestGetLatestSuccess(t *testing.T) {
 	if err := repo.MarkRunning(ctx, id1); err != nil {
 		t.Fatalf("MarkRunning 1: %v", err)
 	}
-	if err := repo.MarkCompleted(ctx, id1, "1.1000", repository.StatusSuccess, nil); err != nil {
-		t.Fatalf("MarkCompleted 1: %v", err)
+	if err := repo.MarkSuccess(ctx, id1, "1.1000"); err != nil {
+		t.Fatalf("MarkSuccess 1: %v", err)
 	}
 
 	// Need to complete first before inserting second (unique partial index).
@@ -282,8 +331,8 @@ func TestGetLatestSuccess(t *testing.T) {
 	if err := repo.MarkRunning(ctx, id2); err != nil {
 		t.Fatalf("MarkRunning 2: %v", err)
 	}
-	if err := repo.MarkCompleted(ctx, id2, "1.2000", repository.StatusSuccess, nil); err != nil {
-		t.Fatalf("MarkCompleted 2: %v", err)
+	if err := repo.MarkSuccess(ctx, id2, "1.2000"); err != nil {
+		t.Fatalf("MarkSuccess 2: %v", err)
 	}
 
 	q, err := repo.GetLatestSuccess(ctx, "USD", "EUR")

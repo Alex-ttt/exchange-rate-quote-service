@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"quoteservice/internal/repository"
 	"quoteservice/internal/testkit"
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 		if err := testDB.Ping(); err != nil {
 			return err
 		}
-		if err := repository.RunMigrations(testDB); err != nil {
+		if err := repository.RunMigrations(testDB, zap.NewNop().Sugar()); err != nil {
 			return err
 		}
 

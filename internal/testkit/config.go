@@ -48,7 +48,7 @@ func envDurationOrDefault(key string, def time.Duration) time.Duration {
 		// Try parsing as plain seconds.
 		secs, err2 := strconv.Atoi(v)
 		if err2 != nil {
-			fmt.Fprintf(os.Stderr, "testkit: invalid value %q for %s (expected duration or seconds), using default %v\n", v, key, def)
+			_, _ = fmt.Fprintf(os.Stderr, "testkit: invalid value %q for %s (expected duration or seconds), using default %v\n", v, key, def)
 			return def
 		}
 		return time.Duration(secs) * time.Second
@@ -63,7 +63,7 @@ func envBoolOrDefault(key string, def bool) bool {
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "testkit: invalid value %q for %s (expected bool), using default %v\n", v, key, def)
+		_, _ = fmt.Fprintf(os.Stderr, "testkit: invalid value %q for %s (expected bool), using default %v\n", v, key, def)
 		return def
 	}
 	return b

@@ -2,6 +2,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,10 +11,7 @@ import (
 	"time"
 )
 
-// RatesProvider defines an interface for fetching exchange rates from external sources.
-type RatesProvider interface {
-	GetRate(base, quote string) (string, time.Time, error)
-}
+var _ RatesProvider = (*ExchangeRateHostProvider)(nil)
 
 // ExchangeRateHostProvider fetches rates from the exchangerate.host API.
 type ExchangeRateHostProvider struct {
@@ -48,9 +46,13 @@ type erHostResponse struct {
 }
 
 // GetRate fetches the exchange rate for the given base/quote currency pair.
-func (p *ExchangeRateHostProvider) GetRate(base, quote string) (string, time.Time, error) {
-	url := p.getLatestURL(base, quote)
-	resp, err := p.client.Get(url)
+func (p *ExchangeRateHostProvider) GetRate(ctx context.Context, base, quote string) (string, time.Time, error) {
+	reqURL := p.getLatestURL(base, quote)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("external API request creation failed: %w", err)
+	}
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("external API request failed: %w", err)
 	}

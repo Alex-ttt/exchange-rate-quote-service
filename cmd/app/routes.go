@@ -23,7 +23,7 @@ func (app *App) initHTTP(quoteService service.QuoteServiceInterface) {
 	r.Get("/quotes/{update_id}", api.HandleGetQuoteByID(quoteService))
 	r.Get("/quotes/latest", api.HandleGetLatestQuote(quoteService))
 	r.Get("/healthz", api.HandleHealthz())
-	r.Get("/readyz", api.HandleReadyz(app.db, app.rdbCache))
+	r.Get("/readyz", api.HandleReadyz(app.db, app.rdbCache, app.rdbAsynq))
 
 	if app.cfg.Server.ServeSwagger {
 		r.Get("/swagger/*", api.SwaggerUIHandler())

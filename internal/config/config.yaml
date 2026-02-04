@@ -14,16 +14,21 @@ redis:
   asynq_addr: "redis_asynq:6380"
   cache_addr: "redis_cache:6381"
 
-external:
-  provider: exchangerate_host
-  base_url: https://api.exchangerate.host
+exchangerate_host:
+  base_url: "https://api.exchangerate.host"
   api_key: ""
+  timeout_sec: 5
+
+frankfurter:
+  base_url: "https://api.frankfurter.dev/v1"
   timeout_sec: 5
 
 worker:
   concurrency: 1
+  max_retry: 3
+  timeout_sec: 30
+  check_interval_sec: 5
 
 cache:
-  ttl_sec: 600
-  task_max_retry: 3
-  task_timeout_sec: 30
+  latest_price_ttl_sec: 600
+  exchange_provider_price_ttl_sec: 300

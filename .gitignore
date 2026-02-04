@@ -40,8 +40,8 @@ dist/
 # But keep .env.example
 !.env.example
 
-# Documentation (local-only)
-docs/
+# Documentation (local-only, top-level only)
+/docs/
 
 # IDE - GoLand / IntelliJ IDEA
 .idea/
