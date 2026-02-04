@@ -195,7 +195,7 @@ const docTemplate = `{
         },
         "/readyz": {
             "get": {
-                "description": "Checks connectivity to critical dependencies (Postgres and Redis). Returns 200 only when all dependencies are reachable.",
+                "description": "Checks connectivity to critical dependencies (Postgres, cache Redis, and asynq Redis). Returns 200 only when all dependencies are reachable.",
                 "produces": [
                     "application/json"
                 ],
